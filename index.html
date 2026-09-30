@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magic Gift Creator</title>
+    <style>
+        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { margin: 0; padding: 0; background-color: #12091f; color: white; display: flex; flex-direction: column; align-items: center; min-height: 100vh; overflow-x: hidden; text-align: center; }
+        .container { max-width: 450px; width: 90%; padding: 25px; margin-top: 30px; }
+        
+        /* Creator Form */
+        .card { background: rgba(255, 255, 255, 0.08); padding: 25px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); backdrop-filter: blur(10px); }
+        h1, h2 { color: #ff8df3; margin-bottom: 15px; }
+        input, textarea { width: 100%; padding: 12px; margin-bottom: 12px; border-radius: 10px; border: 1px solid #522d7a; background: #2d184f; color: white; font-size: 15px; }
+        input:focus, textarea:focus { outline: none; border-color: #ff8df3; }
+        textarea { resize: vertical; min-height: 90px; }
+        .btn { background: linear-gradient(90deg, #ff6bdf, #a855f7); color: white; border: none; padding: 14px 28px; border-radius: 25px; font-size: 16px; font-weight: bold; cursor: pointer; width: 100%; transition: 0.2s; }
+        .btn:hover { transform: scale(1.03); }
+        .result-box { margin-top: 15px; display: none; background: #000; padding: 15px; border-radius: 10px; border: 1px solid #ff8df3; word-break: break-all; }
+
+        /* Receiver Screens */
+        .screen { display: none; flex-direction: column; align-items: center; justify-content: center; width: 100%; }
+        .active { display: flex; animation: fadeIn 0.8s; }
+        .cake-emoji { font-size: 100px; margin: 20px 0; cursor: pointer; user-select: none; }
+        .photo-frame { width: 220px; height: 220px; background: #fff; padding: 8px; border-radius: 12px; margin-bottom: 20px; transform: rotate(-3deg); box-shadow: 0 8px 20px rgba(0,0,0,0.6); }
+        .photo-frame img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
+        .letter { background: rgba(255,255,255,0.1); padding: 20px; border-radius: 15px; text-align: left; line-height: 1.6; border: 1px solid rgba(255,255,255,0.2); }
+        .balloon { position: fixed; bottom: -100px; font-size: 40px; animation: floatUp 4s linear forwards; z-index: 100; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes floatUp { to { transform: translateY(-120vh); } }
+    </style>
+</head>
+<body>
+
+    <!-- 1. CREATOR MODE -->
+    <div id="creator-section" class="container">
+        <div class="card">
+            <h1>✨ Create a Gift ✨</h1>
+            <input type="text" id="recName" placeholder="Recipient Name (e.g., Priya)">
+            <input type="password" id="secretPin" placeholder="Set Secret PIN (e.g., 1234)" maxlength="6">
+            <textarea id="message" placeholder="Write your letter here..."></textarea>
+            <input type="text" id="photoUrl" placeholder="Photo Direct Link (URL)">
+            <input type="text" id="musicUrl" placeholder="Song Direct Link (.mp3 URL)">
+            <button class="btn" onclick="generateGift()">Generate Gift Link</button>
+
+            <div class="result-box" id="result-box">
+                <p style="color: #00ff88; margin-top:0;">✅ Share this link with them:</p>
+                <input type="text" id="shareLink" readonly>
+                <button class="btn" onclick="copyLink()" style="padding: 8px; font-size: 14px;">Copy Link</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. RECEIVER MODE -->
+    <div id="receiver-section" class="container" style="display: none;">
+        <!-- Step A: PIN Check -->
+        <div id="screen-pin" class="screen active card">
+            <h2>Enter Secret PIN 🔒</h2>
+            <input type="password" id="enterPin" placeholder="****" style="text-align: center; font-size: 20px;">
+            <button class="btn" onclick="unlockGift()">Unlock Surprise</button>
+            <p id="pin-error" style="color: #ff4d4d; display: none; margin-bottom: 0;">Wrong PIN! Try again.</p>
+        </div>
+
+        <!-- Step B: Cake & Candle -->
+        <div id="screen-cake" class="screen">
+            <h2>Make a wish & blow candles! 🎂</h2>
+            <div class="cake-emoji" id="cake">🎂</div>
+            <button class="btn" id="cake-btn" onclick="handleCake()">Blow Candles 💨</button>
+        </div>
+
+        <!-- Step C: Photo, Letter & Song -->
+        <div id="screen-final" class="screen">
+            <h1 id="disp-heading" style="color: #ff8df3;">Happy Birthday! 🎉</h1>
+            <div class="photo-frame" id="frame-box" style="display: none;">
+                <img id="disp-photo" src="" alt="Memory">
+            </div>
+            <div class="letter">
+                <p id="disp-msg"></p>
+            </div>
+            <audio id="bg-music" loop></audio>
+        </div>
+    </div>
+
+    <script>
+        let giftData = null;
+        let cakeStep = 0;
+
+        window.onload = function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const rawData = urlParams.get('gift');
+
+            if (rawData) {
+                document.getElementById('creator-section').style.display = 'none';
+                document.getElementById('receiver-section').style.display = 'block';
+                try {
+                    giftData = JSON.parse(decodeURIComponent(atob(rawData)));
+                } catch(e) {
+                    alert("Invalid gift link!");
+                }
+            }
+        };
+
+        function generateGift() {
+            const name = document.getElementById('recName').value;
+            const pin = document.getElementById('secretPin').value;
+            const msg = document.getElementById('message').value;
+            const photo = document.getElementById('photoUrl').value;
+            const music = document.getElementById('musicUrl').value;
+
+            if(!name || !pin || !msg) {
+                alert("Please fill Name, PIN, and Message!");
+                return;
+            }
+
+            const dataObj = { name, pin, msg, photo, music };
+            const encoded = btoa(encodeURIComponent(JSON.stringify(dataObj)));
+            const finalUrl = window.location.href.split('?')[0] + "?gift=" + encoded;
+
+            document.getElementById('shareLink').value = finalUrl;
+            document.getElementById('result-box').style.display = 'block';
+        }
+
+        function copyLink() {
+            const copyText = document.getElementById("shareLink");
+            copyText.select();
+            document.execCommand("copy");
+            alert("Link copied! Send it to your special person.");
+        }
+
+        function unlockGift() {
+            const inputPin = document.getElementById('enterPin').value;
+            if (giftData && inputPin === giftData.pin) {
+                document.getElementById('screen-pin').classList.remove('active');
+                document.getElementById('screen-cake').classList.add('active');
+            } else {
+                document.getElementById('pin-error').style.display = 'block';
+            }
+        }
+
+        function handleCake() {
+            const cake = document.getElementById('cake');
+            const btn = document.getElementById('cake-btn');
+
+            if (cakeStep === 0) {
+                cake.innerText = "🍰";
+                btn.innerText = "Cut the Cake 🔪";
+                cakeStep = 1;
+            } else {
+                document.getElementById('screen-cake').classList.remove('active');
+                document.getElementById('screen-final').classList.add('active');
+                
+                document.getElementById('disp-heading').innerText = "Special Gift For " + giftData.name + " ✨";
+                document.getElementById('disp-msg').innerText = giftData.msg;
+
+                if (giftData.photo) {
+                    document.getElementById('disp-photo').src = giftData.photo;
+                    document.getElementById('frame-box').style.display = 'block';
+                }
+                if (giftData.music) {
+                    const audio = document.getElementById('bg-music');
+                    audio.src = giftData.music;
+                    audio.play().catch(e => console.log("Autoplay blocked"));
+                }
+                popBalloons();
+            }
+        }
+
+        function popBalloons() {
+            const icons = ["🎈", "🎉", "💖", "✨", "🌸"];
+            for(let i = 0; i < 25; i++) {
+                let b = document.createElement("div");
+                b.className = "balloon";
+                b.innerText = icons[Math.floor(Math.random() * icons.length)];
+                b.style.left = Math.random() * 90 + "vw";
+                b.style.animationDuration = (Math.random() * 2 + 3) + "s";
+                document.body.appendChild(b);
+            }
+        }
+    </script>
+</body>
+</html>
